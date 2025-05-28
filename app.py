@@ -116,7 +116,7 @@ if st.sidebar.button("🔌 Conectar"):
 # ------------------------------
 # Tabs principales
 # ------------------------------
-tab1, tab2 = st.tabs(["🔎 Exploración", "🔄 Integración"])
+tab1, tab2, tab3 = st.tabs(["🔎 Exploración", "🔄 Integración", "⚙️ Cargar en BD"])
 
 # ------------------------------
 # TAB 1: Exploración
@@ -293,3 +293,41 @@ with tab2:
 
         else:
             st.info("Mapea al menos una columna para visualizar la integración.")
+            
+# ------------------------------
+# TAB 3: Cargar en BD
+# ------------------------------
+with tab3:
+    st.title("⚙️ Carga Directa en Base de Datos")
+
+    if "df_merged" not in locals():
+        st.info("ℹ️ Primero realiza una integración válida para habilitar esta opción.")
+        st.stop()
+
+    if not st.session_state["motores_conectados"]:
+        st.warning("⚠️ No hay motores conectados.")
+        st.stop()
+
+    motores = list(st.session_state["motores_conectados"].keys())
+    motor_destino = st.selectbox("🛢 Motor de destino", motores, key="crud_motor")
+
+    engine = st.session_state["motores_conectados"][motor_destino]
+    inspector = inspect(engine)
+    tablas_destino = st.session_state["tablas_por_motor"].get(motor_destino, [])
+    tabla_destino = st.selectbox("📥 Tabla destino", tablas_destino, key="crud_tabla")
+
+    columnas_destino = [col["name"] for col in inspector.get_columns(tabla_destino)]
+
+    st.markdown("### 👁️ Vista previa de datos a insertar")
+    st.dataframe(df_merged, use_container_width=True)
+
+    if st.button("🚀 Cargar datos en tabla destino"):
+        try:
+            # Verificar compatibilidad de columnas
+            if not set(df_merged.columns).issubset(set(columnas_destino)):
+                st.error("❌ Las columnas del DataFrame no coinciden con las de la tabla destino.")
+            else:
+                df_merged.to_sql(tabla_destino, engine, if_exists="append", index=False)
+                st.success(f"✅ Datos insertados correctamente en '{tabla_destino}' ({motor_destino.upper()})")
+        except Exception as e:
+            st.error(f"❌ Error al insertar datos: {e}")
