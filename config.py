@@ -1,4 +1,4 @@
-# app.py — Interfaz web con Streamlit para conexión, validación y exportación de BDs heterogéneas
+# config.py — Configuración base sin soporte para Oracle
 
 import streamlit as st
 from sqlalchemy import create_engine
@@ -18,7 +18,7 @@ usuarios_unificados = []
 st.sidebar.title("⚙️ Configuración de Conexión")
 
 tipo_bd = st.sidebar.selectbox("Tipo de Base de Datos", [
-    "sqlite", "postgres", "mysql", "oracle", "sqlserver"
+    "sqlite", "postgres", "mysql", "sqlserver"
 ])
 
 # Valores por defecto según motor
@@ -26,7 +26,6 @@ defaults = {
     "sqlite":   {"host": "localhost", "puerto": "",     "usuario": "",        "clave": "",      "nombre_bd": "BDtestTipoSQLite.db"},
     "postgres": {"host": "localhost", "puerto": "5432",  "usuario": "postgres","clave": "123456","nombre_bd": "northwind"},
     "mysql":    {"host": "localhost", "puerto": "3306",  "usuario": "root",    "clave": "123456","nombre_bd": "sakila"},
-    "oracle":   {"host": "localhost", "puerto": "1521",  "usuario": "SH",      "clave": "sh",    "nombre_bd": "XEPDB1"},
     "sqlserver":{"host": "DESKTOP-9EK5NEP","puerto": "", "usuario": "",        "clave": "",      "nombre_bd": "AdventureWorks2022"}
 }
 
@@ -37,10 +36,7 @@ host = st.sidebar.text_input("Host", value=d["host"])
 puerto = st.sidebar.text_input("Puerto", value=d["puerto"])
 usuario = st.sidebar.text_input("Usuario", value=d["usuario"])
 clave = st.sidebar.text_input("Contraseña", type="password", value=d["clave"])
-nombre_bd = st.sidebar.text_input(
-    "Nombre de la BD / Ruta SQLite" if tipo_bd != "oracle" else "Service Name",
-    value=d["nombre_bd"]
-)
+nombre_bd = st.sidebar.text_input("Nombre de la BD / Ruta SQLite", value=d["nombre_bd"])
 
 # ------------------------------
 # Función para conectar y leer usuarios
@@ -51,13 +47,15 @@ def conectar_y_leer():
     try:
         if tipo_bd == "sqlite":
             url = f"sqlite:///{nombre_bd}"
-        elif tipo_bd == "oracle":
-            url = f"oracle+oracledb://{usuario}:{clave}@{host}:1521/?service_name={nombre_bd}"
         elif tipo_bd == "sqlserver":
             url = f"mssql+pyodbc://@{host}/{nombre_bd}?driver=ODBC+Driver+17+for+SQL+Server&trusted_connection=yes"
+        elif tipo_bd == "postgres":
+            url = f"postgresql+psycopg2://{usuario}:{clave}@{host}:{puerto}/{nombre_bd}"
+        elif tipo_bd == "mysql":
+            url = f"mysql+pymysql://{usuario}:{clave}@{host}:{puerto}/{nombre_bd}"
         else:
-            url = f"{tipo_bd}+psycopg2://{usuario}:{clave}@{host}:{puerto}/{nombre_bd}" if tipo_bd == "postgres" \
-                  else f"{tipo_bd}+pymysql://{usuario}:{clave}@{host}:{puerto}/{nombre_bd}"
+            st.error("Motor no soportado.")
+            return
 
         engine = create_engine(url)
         Base.metadata.create_all(engine)

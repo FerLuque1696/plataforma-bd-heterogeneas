@@ -4,8 +4,6 @@ import pandas as pd
 import graphviz
 from models import Base
 
-
-
 # ------------------------------
 # Estilo visual
 # ------------------------------
@@ -19,7 +17,6 @@ st.markdown("""
     .stButton > button { background-color: #29738F; color: white; }
     .stSelectbox label { color: #7F6F62; }
     .stDataFrame { background-color: #CEC2B8; }
-
     div[data-baseweb="select"] {
         margin-bottom: -10px;
         font-size: 13px !important;
@@ -47,7 +44,7 @@ if "tablas_por_motor" not in st.session_state:
 st.sidebar.title("⚙️ Conexión")
 
 tipo_bd = st.sidebar.selectbox("Tipo de Base de Datos", [
-    "sqlite", "postgres", "mysql", "oracle", "sqlserver"
+    "sqlite", "postgres", "mysql", "sqlserver"
 ])
 
 defaults = {
@@ -72,13 +69,6 @@ defaults = {
         "clave": "123456",
         "nombre_bd": "bd_mysql_demo"
     },
-    "oracle": {
-        "host": "localhost",
-        "puerto": "1521",
-        "usuario": "system",
-        "clave": "123456",
-        "nombre_bd": "XE"
-    },
     "sqlserver": {
         "host": "DESKTOP-9EK5NEP",
         "puerto": "",
@@ -93,13 +83,10 @@ host = st.sidebar.text_input("Host", value=d["host"])
 puerto = st.sidebar.text_input("Puerto", value=d["puerto"])
 usuario = st.sidebar.text_input("Usuario", value=d["usuario"])
 clave = st.sidebar.text_input("Contraseña", type="password", value=d["clave"])
-nombre_bd = st.sidebar.text_input(
-    "Nombre de la BD / Ruta SQLite" if tipo_bd != "oracle" else "Service Name", value=d["nombre_bd"]
-)
+nombre_bd = st.sidebar.text_input("Nombre de la BD / Ruta SQLite", value=d["nombre_bd"])
 
 def construir_url(tipo, user, pwd, host, port, db):
     if tipo == "sqlite": return f"sqlite:///{db}"
-    if tipo == "oracle": return f"oracle+oracledb://{user}:{pwd}@{host}:1521/?service_name={db}"
     if tipo == "sqlserver": return f"mssql+pyodbc://@{host}/{db}?driver=ODBC+Driver+17+for+SQL+Server&trusted_connection=yes"
     if tipo == "postgres": return f"postgresql+psycopg2://{user}:{pwd}@{host}:{port}/{db}"
     if tipo == "mysql": return f"mysql+pymysql://{user}:{pwd}@{host}:{port}/{db}"
@@ -111,8 +98,8 @@ if st.sidebar.button("🔌 Conectar"):
         engine = create_engine(url)
         inspector = inspect(engine)
 
-        # Corrección: usar schema "public" en PostgreSQL, y UPPER en Oracle
-        schema = "public" if tipo_bd == "postgres" else (usuario.upper() if tipo_bd == "oracle" else None)
+        # Corrección: usar schema "public" en PostgreSQL
+        schema = "public" if tipo_bd == "postgres" else None
         tablas = inspector.get_table_names(schema=schema)
 
         if not tablas:
@@ -125,7 +112,6 @@ if st.sidebar.button("🔌 Conectar"):
 
     except Exception as e:
         st.sidebar.error(f"❌ Error al conectar: {e}")
-
 
 # ------------------------------
 # Tabs principales
@@ -263,12 +249,47 @@ with tab2:
                 })
             st.dataframe(pd.DataFrame(filas), use_container_width=True)
 
+            # 🔁 Renombrar columnas de B según mapeo
             df_b_ren = df_b.rename(columns={v: k for k, v in mapeo.items()})
+
+            # 🔄 Filtrar columnas en el orden correcto
             df_a_f = df_a[list(mapeo.keys())]
             df_b_f = df_b_ren[list(mapeo.keys())]
 
+            # 🧮 Unir dataframes y eliminar duplicados
             df_merged = pd.concat([df_a_f, df_b_f], ignore_index=True).drop_duplicates()
             st.success(f"✅ {df_merged.shape[0]} registros unificados.")
             st.dataframe(df_merged, use_container_width=True)
+
+            # ✅ Validación de integridad posterior a integración
+            from validators import validar_datos
+            st.markdown("### ✅ Validación de Integridad de Datos Integrados")
+
+            registros = df_merged.to_dict(orient="records")
+            columnas_requeridas = {"nombre", "email"}
+            if columnas_requeridas.issubset(df_merged.columns):
+                advertencias = validar_datos(registros)
+
+                if not advertencias:
+                    st.success("✔ Todos los registros unificados son válidos.")
+                else:
+                    for adv in advertencias:
+                        st.warning(adv)
+            else:
+                st.info("ℹ️ La validación no se aplicó porque no se encontraron las columnas requeridas: 'nombre' y 'email'.")
+
+            # 💾 Botón para exportar resultado unificado
+            import io
+
+            st.markdown("### 📥 Descargar Resultado Integrado")
+            csv_buffer = io.StringIO()
+            df_merged.to_csv(csv_buffer, index=False)
+            st.download_button(
+                label="💾 Descargar CSV",
+                data=csv_buffer.getvalue(),
+                file_name="datos_unificados.csv",
+                mime="text/csv"
+            )
+
         else:
             st.info("Mapea al menos una columna para visualizar la integración.")

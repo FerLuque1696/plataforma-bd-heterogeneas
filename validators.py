@@ -3,7 +3,7 @@
 import pandas as pd  # Usamos pandas para trabajar con datos tabulares fácilmente
 
 # Lista de valores válidos que puede tener el campo 'origen'
-ORIGENES_VALIDOS = {"sqlite", "postgres", "mysql", "oracle", "sqlserver"}
+ORIGENES_VALIDOS = {"sqlite", "postgres", "mysql","sqlserver"}
 
 # ---------------------------------------------
 # FUNCIÓN: validar_datos
