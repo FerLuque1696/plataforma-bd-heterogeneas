@@ -1,13 +1,24 @@
+# app.py (documentado completamente para principiantes y siguiendo buenas prácticas)
+
+# ------------------------------
+# Importaciones necesarias
+# ------------------------------
 import streamlit as st
 from sqlalchemy import create_engine, inspect
 import pandas as pd
 import graphviz
 from models import Base
+from validators import validar_generico
+import io
 
 # ------------------------------
-# Estilo visual
+# Configuración inicial de la página
 # ------------------------------
 st.set_page_config(page_title="Plataforma BDs", layout="wide")
+
+# ------------------------------
+# Estilos visuales personalizados
+# ------------------------------
 st.markdown("""
     <style>
     body { background-color: #F1E5D8; }
@@ -30,7 +41,7 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 # ------------------------------
-# Estado inicial
+# Estado inicial (sesión)
 # ------------------------------
 if "motores_conectados" not in st.session_state:
     st.session_state["motores_conectados"] = {}
@@ -39,148 +50,127 @@ if "tablas_por_motor" not in st.session_state:
     st.session_state["tablas_por_motor"] = {}
 
 # ------------------------------
-# Sidebar: conexión
+# Sidebar: Conexión a base de datos
 # ------------------------------
 st.sidebar.title("⚙️ Conexión")
 
-tipo_bd = st.sidebar.selectbox("Tipo de Base de Datos", [
-    "sqlite", "postgres", "mysql", "sqlserver"
-])
+tipo_bd = st.sidebar.selectbox("Tipo de Base de Datos", ["sqlite", "postgres", "mysql", "sqlserver"])
 
-defaults = {
-    "sqlite": {
-        "host": "localhost",
-        "puerto": "",
-        "usuario": "",
-        "clave": "",
-        "nombre_bd": "BDs_Prueba/SQLite/bd_sqlite_demo.db"
-    },
-    "postgres": {
-        "host": "localhost",
-        "puerto": "5432",
-        "usuario": "postgres",
-        "clave": "123456",
-        "nombre_bd": "bd_postgres_demo"
-    },
-    "mysql": {
-        "host": "localhost",
-        "puerto": "3306",
-        "usuario": "root",
-        "clave": "123456",
-        "nombre_bd": "bd_mysql_demo"
-    },
-    "sqlserver": {
-        "host": "DESKTOP-9EK5NEP",
-        "puerto": "",
-        "usuario": "",
-        "clave": "",
-        "nombre_bd": "bd_sqlserver_demo"
-    }
+# Valores por defecto por motor
+valores_por_defecto = {
+    "sqlite": {"host": "localhost", "puerto": "", "usuario": "", "clave": "", "nombre_bd": "BDs_Prueba/SQLite/bd_sqlite_demo.db"},
+    "postgres": {"host": "localhost", "puerto": "5432", "usuario": "postgres", "clave": "123456", "nombre_bd": "bd_postgres_demo"},
+    "mysql": {"host": "localhost", "puerto": "3306", "usuario": "root", "clave": "123456", "nombre_bd": "bd_mysql_demo"},
+    "sqlserver": {"host": "DESKTOP-9EK5NEP", "puerto": "", "usuario": "", "clave": "", "nombre_bd": "bd_sqlserver_demo"}
 }
 
-d = defaults[tipo_bd]
-host = st.sidebar.text_input("Host", value=d["host"])
-puerto = st.sidebar.text_input("Puerto", value=d["puerto"])
-usuario = st.sidebar.text_input("Usuario", value=d["usuario"])
-clave = st.sidebar.text_input("Contraseña", type="password", value=d["clave"])
-nombre_bd = st.sidebar.text_input("Nombre de la BD / Ruta SQLite", value=d["nombre_bd"])
+valores = valores_por_defecto[tipo_bd]
+host = st.sidebar.text_input("Host", value=valores["host"])
+puerto = st.sidebar.text_input("Puerto", value=valores["puerto"])
+usuario = st.sidebar.text_input("Usuario", value=valores["usuario"])
+clave = st.sidebar.text_input("Contraseña", type="password", value=valores["clave"])
+nombre_bd = st.sidebar.text_input("Nombre de la BD / Ruta SQLite", value=valores["nombre_bd"])
+
+# Construcción de URL de conexión
 
 def construir_url(tipo, user, pwd, host, port, db):
-    if tipo == "sqlite": return f"sqlite:///{db}"
-    if tipo == "sqlserver": return f"mssql+pyodbc://@{host}/{db}?driver=ODBC+Driver+17+for+SQL+Server&trusted_connection=yes"
-    if tipo == "postgres": return f"postgresql+psycopg2://{user}:{pwd}@{host}:{port}/{db}"
-    if tipo == "mysql": return f"mysql+pymysql://{user}:{pwd}@{host}:{port}/{db}"
+    if tipo == "sqlite":
+        return f"sqlite:///{db}"
+    if tipo == "sqlserver":
+        return f"mssql+pyodbc://@{host}/{db}?driver=ODBC+Driver+17+for+SQL+Server&trusted_connection=yes"
+    if tipo == "postgres":
+        return f"postgresql+psycopg2://{user}:{pwd}@{host}:{port}/{db}"
+    if tipo == "mysql":
+        return f"mysql+pymysql://{user}:{pwd}@{host}:{port}/{db}"
     return None
 
+# Botón para conectar
 if st.sidebar.button("🔌 Conectar"):
     try:
-        url = construir_url(tipo_bd, usuario, clave, host, puerto, nombre_bd)
-        engine = create_engine(url)
-        inspector = inspect(engine)
-
-        # Corrección: usar schema "public" en PostgreSQL
-        schema = "public" if tipo_bd == "postgres" else None
-        tablas = inspector.get_table_names(schema=schema)
+        url_conexion = construir_url(tipo_bd, usuario, clave, host, puerto, nombre_bd)
+        motor = create_engine(url_conexion)
+        inspector = inspect(motor)
+        esquema = "public" if tipo_bd == "postgres" else None
+        tablas = inspector.get_table_names(schema=esquema)
 
         if not tablas:
             st.sidebar.warning("Conexión exitosa, pero no se encontraron tablas visibles en el esquema.")
         else:
             st.sidebar.success(f"Conectado a {tipo_bd.upper()} ({len(tablas)} tabla(s))")
 
-        st.session_state["motores_conectados"][tipo_bd] = engine
+        st.session_state["motores_conectados"][tipo_bd] = motor
         st.session_state["tablas_por_motor"][tipo_bd] = tablas
 
-    except Exception as e:
-        st.sidebar.error(f"❌ Error al conectar: {e}")
+    except Exception as error:
+        st.sidebar.error(f"❌ Error al conectar: {error}")
 
 # ------------------------------
-# Tabs principales
+# TAB 1: Exploración de tablas conectadas
 # ------------------------------
-tab1, tab2, tab3 = st.tabs(["🔎 Exploración", "🔄 Integración", "⚙️ Cargar en BD"])
+tab_exploracion, tab_integracion, tab_carga = st.tabs(["🔎 Exploración", "🔄 Integración", "⚙️ Cargar en BD"])
 
-# ------------------------------
-# TAB 1: Exploración
-# ------------------------------
-with tab1:
+with tab_exploracion:
     st.title("🧩 Plataforma de Integración de Bases de Datos")
 
-    for motor, engine in st.session_state["motores_conectados"].items():
-        st.subheader(f"📋 Tablas en {motor.upper()}")
-        inspector = inspect(engine)
-        tablas = st.session_state["tablas_por_motor"].get(motor, [])
+    for nombre_motor, motor_conectado in st.session_state["motores_conectados"].items():
+        st.subheader(f"📋 Tablas disponibles en {nombre_motor.upper()}")
+        inspector = inspect(motor_conectado)
+        lista_tablas = st.session_state["tablas_por_motor"].get(nombre_motor, [])
 
-        if tablas:
-            tabla_sel = st.selectbox(f"Selecciona una tabla en {motor}:", tablas, key=f"tabla_{motor}")
-            columnas = inspector.get_columns(tabla_sel)
-            st.table([{"Columna": c["name"], "Tipo": str(c["type"])} for c in columnas])
+        if lista_tablas:
+            tabla_seleccionada = st.selectbox(f"Selecciona una tabla en {nombre_motor}:", lista_tablas, key=f"tabla_{nombre_motor}")
+            columnas = inspector.get_columns(tabla_seleccionada)
+            st.table([{"Columna": col["name"], "Tipo": str(col["type"])} for col in columnas])
 
-            # Detectar relaciones y generar diagrama ER
+            # Analizar claves foráneas y relaciones
             relaciones = []
-            for t in tablas:
-                for fk in inspector.get_foreign_keys(t):
+            for tabla in lista_tablas:
+                for fk in inspector.get_foreign_keys(tabla):
                     if fk["referred_table"]:
-                        for local_col, remote_col in zip(fk["constrained_columns"], fk["referred_columns"]):
+                        for col_local, col_remota in zip(fk["constrained_columns"], fk["referred_columns"]):
                             relaciones.append({
-                                "Desde": f"{t}.{local_col}",
-                                "Hacia": f"{fk['referred_table']}.{remote_col}"
+                                "Desde": f"{tabla}.{col_local}",
+                                "Hacia": f"{fk['referred_table']}.{col_remota}"
                             })
 
+            # Mostrar relaciones si las hay
             if relaciones:
-                st.markdown("### 🔗 Relaciones encontradas")
+                st.markdown("### 🔗 Relaciones encontradas entre tablas")
                 st.table(relaciones)
 
                 dot = graphviz.Digraph("ER", format="png")
                 dot.attr(rankdir="LR", size="8")
 
-                for t in tablas:
-                    cols = inspector.get_columns(t)
-                    cab = f"<tr><td bgcolor='#6096AA'><b>{t}</b></td></tr>"
-                    filas = "".join([f"<tr><td align='left'>{c['name']} : {c['type']}</td></tr>" for c in cols])
-                    html = f"<<table border='0' cellborder='1' cellspacing='0'>{cab}{filas}</table>>"
-                    dot.node(t, html)
+                for tabla in lista_tablas:
+                    columnas_tabla = inspector.get_columns(tabla)
+                    cabecera = f"<tr><td bgcolor='#6096AA'><b>{tabla}</b></td></tr>"
+                    filas = "".join([f"<tr><td align='left'>{col['name']} : {col['type']}</td></tr>" for col in columnas_tabla])
+                    html = f"<<table border='0' cellborder='1' cellspacing='0'>{cabecera}{filas}</table>>"
+                    dot.node(tabla, html)
 
-                for rel in relaciones:
-                    origen, destino = rel["Desde"].split(".")[0], rel["Hacia"].split(".")[0]
-                    col = rel["Desde"].split(".")[1]
-                    dot.edge(origen, destino, label=col, fontsize="10")
+                for relacion in relaciones:
+                    tabla_origen, tabla_destino = relacion["Desde"].split(".")[0], relacion["Hacia"].split(".")[0]
+                    columna_origen = relacion["Desde"].split(".")[1]
+                    dot.edge(tabla_origen, tabla_destino, label=columna_origen, fontsize="10")
 
-                st.markdown("### 🗺 Diagrama Entidad-Relación")
+                st.markdown("### 🗺 Diagrama Entidad-Relación (ER)")
                 st.graphviz_chart(dot)
-
             else:
-                st.info("ℹ️ No se detectaron claves foráneas entre las tablas.")
+                st.info("ℹ️ No se detectaron claves foráneas entre las tablas conectadas.")
 
 # ------------------------------
-# TAB 2: Integración
+# TAB 2: Integración de Datos
 # ------------------------------
-with tab2:
+with tab_integracion:
     st.title("🔄 Integración Inteligente de Tablas")
 
+    # Verificar que al menos 2 motores estén conectados para permitir integración
     if len(st.session_state["motores_conectados"]) < 2:
         st.warning("Conecta al menos dos motores para comenzar la integración.")
     else:
         motores = list(st.session_state["motores_conectados"].keys())
 
+        # Selección de motores y tablas de origen A y B
         col1, col2 = st.columns(2)
         with col1:
             motor_a = st.selectbox("🔹 Motor A", motores, key="motor_a")
@@ -189,35 +179,46 @@ with tab2:
             motor_b = st.selectbox("🔸 Motor B", [m for m in motores if m != motor_a], key="motor_b")
             tabla_b = st.selectbox("Tabla B", st.session_state["tablas_por_motor"][motor_b], key="tabla_b")
 
+        # Validación de selección
         if not tabla_a or not tabla_b:
             st.error("⚠️ Debes seleccionar dos tablas válidas para integrar.")
             st.stop()
 
+        # Obtener motores e inspectores
         engine_a = st.session_state["motores_conectados"][motor_a]
         engine_b = st.session_state["motores_conectados"][motor_b]
         inspector_a = inspect(engine_a)
         inspector_b = inspect(engine_b)
 
+        # Obtener nombres de columnas
         cols_a = [col["name"] for col in inspector_a.get_columns(tabla_a)]
         cols_b = [col["name"] for col in inspector_b.get_columns(tabla_b)]
 
+        # Cargar los datos en DataFrames
         df_a = pd.read_sql_table(tabla_a, engine_a)
         df_b = pd.read_sql_table(tabla_b, engine_b)
 
+        # Tipos de columnas para comparación
         tipos_a = {col: str(df_a[col].dtype).upper() for col in df_a.columns}
         tipos_b = {col: str(df_b[col].dtype).upper() for col in df_b.columns}
 
         st.markdown("### 🔁 Configuración de Mapeo")
 
-        mapeo = {}
+        mapeo = {}  # Diccionario para almacenar el mapeo de columnas
+
+        # Crear grafo para visualización del mapeo
         dot = graphviz.Digraph("Mapeo", format="png")
         dot.attr(rankdir="LR", size="5,3", fontsize="10")
 
+        # Nodos para columnas de tabla A
         for col in cols_a:
             dot.node(f"A_{col}", f"A: {col}", shape="box", style="filled", fillcolor="#D6EAF8")
+
+        # Nodos para columnas de tabla B
         for col in cols_b:
             dot.node(f"B_{col}", f"B: {col}", shape="box", style="filled", fillcolor="#F9E79F")
 
+        # Interfaz para que el usuario seleccione el mapeo entre columnas
         col_map1, col_map2 = st.columns(2)
         for i, col_a in enumerate(cols_a):
             target_col = col_map1 if i % 2 == 0 else col_map2
@@ -227,6 +228,7 @@ with tab2:
                     mapeo[col_a] = col_b
                     dot.edge(f"A_{col_a}", f"B_{col_b}", label="→", color="black")
 
+        # Mostrar el diagrama de mapeo visual
         st.markdown("### 🖇 Diagrama de Mapeo Visual")
         st.graphviz_chart(dot, use_container_width=True)
 
@@ -249,33 +251,33 @@ with tab2:
                 })
             st.dataframe(pd.DataFrame(filas), use_container_width=True)
 
-            df_b_ren = df_b.rename(columns={v: k for k, v in mapeo.items()})
-            df_a_f = df_a[list(mapeo.keys())]
-            df_b_f = df_b_ren[list(mapeo.keys())]
+            # Renombrar columnas de df_b al nombre de df_a para unificación
+            df_b_renombrado = df_b.rename(columns={v: k for k, v in mapeo.items()})
+            df_a_filtrado = df_a[list(mapeo.keys())]
+            df_b_filtrado = df_b_renombrado[list(mapeo.keys())]
 
-            df_merged = pd.concat([df_a_f, df_b_f], ignore_index=True).drop_duplicates()
+            # Unir los dos DataFrames sin duplicados
+            df_merged = pd.concat([df_a_filtrado, df_b_filtrado], ignore_index=True).drop_duplicates()
             st.success(f"✅ {df_merged.shape[0]} registros unificados.")
             st.dataframe(df_merged, use_container_width=True)
 
-            # ✅ Validación con nuevo método genérico
-            from validators import validar_generico
+            # Validar los datos integrados con función genérica
             st.markdown("### ✅ Validación de Integridad de Datos Integrados")
-
             advertencias = validar_generico(df_merged, engine_b, tabla_b)
+
             if not advertencias:
                 st.success("✔ Todos los registros unificados son válidos.")
             else:
-                for adv in advertencias:
-                    st.warning(adv)
+                for advertencia in advertencias:
+                    st.warning(advertencia)
 
-            # 📥 Descarga CSV
-            import io
+            # Opción para descargar los datos unificados
             st.markdown("### 📥 Descargar Resultado Integrado")
-            csv_buffer = io.StringIO()
-            df_merged.to_csv(csv_buffer, index=False)
+            buffer_csv = io.StringIO()
+            df_merged.to_csv(buffer_csv, index=False)
             st.download_button(
                 label="💾 Descargar CSV",
-                data=csv_buffer.getvalue(),
+                data=buffer_csv.getvalue(),
                 file_name="datos_unificados.csv",
                 mime="text/csv"
             )
@@ -283,19 +285,22 @@ with tab2:
             st.info("Mapea al menos una columna para visualizar la integración.")
             
 # ------------------------------
-# TAB 3: Cargar en BD
+# TAB 3: Carga de Datos en Base de Datos
 # ------------------------------
-with tab3:
+with tab_carga:
     st.title("⚙️ Carga Directa en Base de Datos")
 
+    # Validar si ya se realizó una integración
     if "df_merged" not in locals():
         st.info("ℹ️ Primero realiza una integración válida para habilitar esta opción.")
         st.stop()
 
+    # Validar que haya al menos un motor conectado
     if not st.session_state["motores_conectados"]:
         st.warning("⚠️ No hay motores conectados.")
         st.stop()
 
+    # Selección del motor de destino
     motores = list(st.session_state["motores_conectados"].keys())
     motor_destino = st.selectbox("🛢 Motor de destino", motores, key="crud_motor")
 
@@ -306,11 +311,12 @@ with tab3:
 
     columnas_destino = [col["name"] for col in inspector.get_columns(tabla_destino)]
 
+    # Vista previa de datos a insertar
     st.markdown("### 👁️ Vista previa de datos a insertar")
     st.dataframe(df_merged, use_container_width=True)
 
+    # Validar compatibilidad entre columnas del DataFrame y tabla destino
     st.markdown("### ⚠️ Compatibilidad de columnas")
-
     columnas_compatibles = set(df_merged.columns).issubset(set(columnas_destino))
 
     if columnas_compatibles:
@@ -322,9 +328,10 @@ with tab3:
         st.write(faltantes)
         st.stop()
 
+    # Botón para insertar datos en la tabla destino
     if st.button("🚀 Insertar en la base de datos (autogenerar PKs)"):
         try:
-            # Detectar columnas PRIMARY KEY
+            # Detectar y excluir columnas PRIMARY KEY
             pk_columnas = []
             for pk in inspector.get_pk_constraint(tabla_destino)["constrained_columns"]:
                 if pk in df_merged.columns:
@@ -332,7 +339,8 @@ with tab3:
 
             df_insertar = df_merged.drop(columns=pk_columnas, errors="ignore")
 
+            # Insertar los datos usando SQLAlchemy
             df_insertar.to_sql(tabla_destino, engine, if_exists="append", index=False)
             st.success(f"✅ Datos insertados correctamente en '{tabla_destino}' de {motor_destino.upper()} (PKs generados automáticamente)")
-        except Exception as e:
-            st.error(f"❌ Error al insertar los datos: {e}")
+        except Exception as error:
+            st.error(f"❌ Error al insertar los datos: {error}")
