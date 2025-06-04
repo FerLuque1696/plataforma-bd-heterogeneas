@@ -1,53 +1,34 @@
 # validators.py
+import pandas as pd
+from sqlalchemy import inspect
 
-import pandas as pd  # Usamos pandas para trabajar con datos tabulares fácilmente
-
-# Lista de valores válidos que puede tener el campo 'origen'
-ORIGENES_VALIDOS = {"sqlite", "postgres", "mysql","sqlserver"}
-
-# ---------------------------------------------
-# FUNCIÓN: validar_datos
-# ---------------------------------------------
-
-def validar_datos(lista_usuarios):
+def validar_generico(df: pd.DataFrame, engine, tabla_destino: str):
     """
-    Realiza validaciones sobre una lista de usuarios unificados.
-    Devuelve una lista de advertencias si hay errores encontrados.
-    Si no hay problemas, la lista de advertencias será vacía.
+    Valida que los datos en el DataFrame sean compatibles con la tabla destino:
+    - No deben existir valores nulos en columnas NOT NULL
+    - No deben existir claves primarias duplicadas
     """
     advertencias = []
+    inspector = inspect(engine)
 
-    # Si la lista está vacía, devolvemos una advertencia directa
-    if not lista_usuarios:
-        return ["❌ La lista de usuarios está vacía."]
+    # 1. Columnas NOT NULL
+    columnas_info = inspector.get_columns(tabla_destino)
+    columnas_not_null = [col["name"] for col in columnas_info if not col.get("nullable", True)]
 
-    # Convertimos la lista de usuarios (diccionarios) a un DataFrame de pandas
-    df = pd.DataFrame(lista_usuarios)
+    for col in columnas_not_null:
+        if col in df.columns and df[col].isnull().any():
+            advertencias.append(f"❌ La columna '{col}' no puede tener valores nulos.")
 
-    # -----------------------------------
-    # Validación 1: Campos nulos
-    # Verifica si hay usuarios sin nombre o sin email
-    # -----------------------------------
-    nulos = df[df[['nombre', 'email']].isnull().any(axis=1)]
-    if not nulos.empty:
-        advertencias.append(f"⚠️ {len(nulos)} registro(s) con campos nulos en 'nombre' o 'email'.")
+    # 2. Clave primaria duplicada (si existe)
+    pk_info = inspector.get_pk_constraint(tabla_destino)
+    claves_primarias = pk_info.get("constrained_columns", [])
 
-    # -----------------------------------
-    # Validación 2: IDs duplicados
-    # Verifica si existen usuarios repetidos por 'id' + 'origen'
-    # -----------------------------------
-    duplicados = df[df.duplicated(subset=['id', 'origen'], keep=False)]
-    if not duplicados.empty:
-        advertencias.append(f"⚠️ {len(duplicados)} registro(s) con ID duplicado por 'id' y 'origen'.")
+    if claves_primarias:
+        if all(col in df.columns for col in claves_primarias):
+            duplicados = df.duplicated(subset=claves_primarias).sum()
+            if duplicados > 0:
+                advertencias.append(
+                    f"⚠️ Hay {duplicados} registros duplicados en la clave primaria ({', '.join(claves_primarias)})."
+                )
 
-    # -----------------------------------
-    # Validación 3: Origen inválido
-    # Asegura que el campo 'origen' solo tenga valores permitidos
-    # -----------------------------------
-    origenes_invalidos = df[~df['origen'].isin(ORIGENES_VALIDOS)]
-    if not origenes_invalidos.empty:
-        advertencias.append(f"⚠️ {len(origenes_invalidos)} registro(s) con origen inválido.")
-
-    # Retornamos todas las advertencias encontradas
     return advertencias
-

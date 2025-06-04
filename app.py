@@ -249,38 +249,27 @@ with tab2:
                 })
             st.dataframe(pd.DataFrame(filas), use_container_width=True)
 
-            # 🔁 Renombrar columnas de B según mapeo
             df_b_ren = df_b.rename(columns={v: k for k, v in mapeo.items()})
-
-            # 🔄 Filtrar columnas en el orden correcto
             df_a_f = df_a[list(mapeo.keys())]
             df_b_f = df_b_ren[list(mapeo.keys())]
 
-            # 🧮 Unir dataframes y eliminar duplicados
             df_merged = pd.concat([df_a_f, df_b_f], ignore_index=True).drop_duplicates()
             st.success(f"✅ {df_merged.shape[0]} registros unificados.")
             st.dataframe(df_merged, use_container_width=True)
 
-            # ✅ Validación de integridad posterior a integración
-            from validators import validar_datos
+            # ✅ Validación con nuevo método genérico
+            from validators import validar_generico
             st.markdown("### ✅ Validación de Integridad de Datos Integrados")
 
-            registros = df_merged.to_dict(orient="records")
-            columnas_requeridas = {"nombre", "email"}
-            if columnas_requeridas.issubset(df_merged.columns):
-                advertencias = validar_datos(registros)
-
-                if not advertencias:
-                    st.success("✔ Todos los registros unificados son válidos.")
-                else:
-                    for adv in advertencias:
-                        st.warning(adv)
+            advertencias = validar_generico(df_merged, engine_b, tabla_b)
+            if not advertencias:
+                st.success("✔ Todos los registros unificados son válidos.")
             else:
-                st.info("ℹ️ La validación no se aplicó porque no se encontraron las columnas requeridas: 'nombre' y 'email'.")
+                for adv in advertencias:
+                    st.warning(adv)
 
-            # 💾 Botón para exportar resultado unificado
+            # 📥 Descarga CSV
             import io
-
             st.markdown("### 📥 Descargar Resultado Integrado")
             csv_buffer = io.StringIO()
             df_merged.to_csv(csv_buffer, index=False)
@@ -290,7 +279,6 @@ with tab2:
                 file_name="datos_unificados.csv",
                 mime="text/csv"
             )
-
         else:
             st.info("Mapea al menos una columna para visualizar la integración.")
             
@@ -323,24 +311,28 @@ with tab3:
 
     st.markdown("### ⚠️ Compatibilidad de columnas")
 
-    columnas_compatibles = set(df_merged.columns).intersection(set(columnas_destino))
+    columnas_compatibles = set(df_merged.columns).issubset(set(columnas_destino))
 
-    if not columnas_compatibles:
-        st.error("❌ Ninguna columna compatible encontrada entre los datos integrados y la tabla destino.")
+    if columnas_compatibles:
+        st.success("✔ Las columnas del DataFrame son compatibles con la tabla destino.")
+    else:
+        st.error("❌ Las columnas del DataFrame NO coinciden con las de la tabla destino.")
+        st.write("🧾 Columnas faltantes en la tabla destino:")
+        faltantes = list(set(df_merged.columns) - set(columnas_destino))
+        st.write(faltantes)
         st.stop()
 
-    columnas_a_insertar = list(columnas_compatibles)
-    columnas_faltantes = set(df_merged.columns) - set(columnas_a_insertar)
-
-    if columnas_faltantes:
-        st.info(f"ℹ️ Las siguientes columnas no se insertarán (por no existir en destino): {', '.join(columnas_faltantes)}")
-
-    st.success("✔ Columnas compatibles detectadas. Preparado para insertar.")
-
-    if st.button("🚀 Insertar en la base de datos"):
+    if st.button("🚀 Insertar en la base de datos (autogenerar PKs)"):
         try:
-            df_insert = df_merged[columnas_a_insertar]
-            df_insert.to_sql(tabla_destino, engine, if_exists="append", index=False)
-            st.success(f"✅ {len(df_insert)} registros insertados correctamente en '{tabla_destino}' de {motor_destino.upper()}")
+            # Detectar columnas PRIMARY KEY
+            pk_columnas = []
+            for pk in inspector.get_pk_constraint(tabla_destino)["constrained_columns"]:
+                if pk in df_merged.columns:
+                    pk_columnas.append(pk)
+
+            df_insertar = df_merged.drop(columns=pk_columnas, errors="ignore")
+
+            df_insertar.to_sql(tabla_destino, engine, if_exists="append", index=False)
+            st.success(f"✅ Datos insertados correctamente en '{tabla_destino}' de {motor_destino.upper()} (PKs generados automáticamente)")
         except Exception as e:
             st.error(f"❌ Error al insertar los datos: {e}")
