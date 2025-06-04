@@ -321,13 +321,26 @@ with tab3:
     st.markdown("### 👁️ Vista previa de datos a insertar")
     st.dataframe(df_merged, use_container_width=True)
 
-    if st.button("🚀 Cargar datos en tabla destino"):
+    st.markdown("### ⚠️ Compatibilidad de columnas")
+
+    columnas_compatibles = set(df_merged.columns).intersection(set(columnas_destino))
+
+    if not columnas_compatibles:
+        st.error("❌ Ninguna columna compatible encontrada entre los datos integrados y la tabla destino.")
+        st.stop()
+
+    columnas_a_insertar = list(columnas_compatibles)
+    columnas_faltantes = set(df_merged.columns) - set(columnas_a_insertar)
+
+    if columnas_faltantes:
+        st.info(f"ℹ️ Las siguientes columnas no se insertarán (por no existir en destino): {', '.join(columnas_faltantes)}")
+
+    st.success("✔ Columnas compatibles detectadas. Preparado para insertar.")
+
+    if st.button("🚀 Insertar en la base de datos"):
         try:
-            # Verificar compatibilidad de columnas
-            if not set(df_merged.columns).issubset(set(columnas_destino)):
-                st.error("❌ Las columnas del DataFrame no coinciden con las de la tabla destino.")
-            else:
-                df_merged.to_sql(tabla_destino, engine, if_exists="append", index=False)
-                st.success(f"✅ Datos insertados correctamente en '{tabla_destino}' ({motor_destino.upper()})")
+            df_insert = df_merged[columnas_a_insertar]
+            df_insert.to_sql(tabla_destino, engine, if_exists="append", index=False)
+            st.success(f"✅ {len(df_insert)} registros insertados correctamente en '{tabla_destino}' de {motor_destino.upper()}")
         except Exception as e:
-            st.error(f"❌ Error al insertar datos: {e}")
+            st.error(f"❌ Error al insertar los datos: {e}")
