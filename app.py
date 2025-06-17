@@ -290,7 +290,6 @@ with tab_integracion:
 with tab_carga:
     st.title("⚙️ Carga Directa en Base de Datos")
 
-    # Validar si ya se realizó una integración
     if "df_merged" not in locals() or "tabla_b" not in locals() or "motor_b" not in locals():
         st.info("ℹ️ Primero realiza una integración válida para habilitar esta opción.")
         st.stop()
@@ -300,13 +299,11 @@ with tab_carga:
         st.stop()
 
     motores = [motor_b] if motor_b in st.session_state["motores_conectados"] else []
-
     if not motores:
         st.error("❌ No se encontró el motor de destino utilizado en la integración previa.")
         st.stop()
 
     motor_destino = st.selectbox("🛢 Motor de destino (utilizado en integración)", motores, key="crud_motor")
-
     engine = st.session_state["motores_conectados"][motor_destino]
     inspector = inspect(engine)
     tablas_destino = st.session_state["tablas_por_motor"].get(motor_destino, [])
@@ -316,7 +313,6 @@ with tab_carga:
         st.stop()
 
     tabla_destino = st.selectbox("📥 Tabla destino (de la integración)", [tabla_b], key="crud_tabla")
-
     columnas_destino = [col["name"] for col in inspector.get_columns(tabla_destino)]
 
     st.markdown("### 👁️ Vista previa de datos a insertar")
@@ -324,7 +320,6 @@ with tab_carga:
 
     st.markdown("### ⚠️ Compatibilidad de columnas")
     columnas_compatibles = set(df_merged.columns).issubset(set(columnas_destino))
-
     if columnas_compatibles:
         st.success("✔ Las columnas del DataFrame son compatibles con la tabla destino.")
     else:
@@ -335,24 +330,52 @@ with tab_carga:
 
     if st.button("🚀 Insertar en la base de datos (autogenerar PKs)"):
         try:
+            columnas_schema = inspector.get_columns(tabla_destino)
+            columnas_schema_dict = {col["name"]: col for col in columnas_schema}
             columnas_pk = inspector.get_pk_constraint(tabla_destino).get("constrained_columns", [])
 
-            # Excluir columnas PK y columnas NOT NULL sin default
-            columnas_notnull = [col["name"] for col in inspector.get_columns(tabla_destino) if not col.get("nullable", True) and not col.get("default")]
-            columnas_excluir = list(set(columnas_pk).intersection(df_merged.columns))
+            # Excluir columnas con 'id' en el nombre o claves primarias explícitas
+            columnas_excluir = []
+            for col in df_merged.columns:
+                if col in columnas_pk or "id_" in col.lower():
+                    columnas_excluir.append(col)
 
-            df_insertar = df_merged.drop(columns=columnas_excluir, errors="ignore")
-            df_insertar = df_insertar.drop_duplicates()
+            df_insertar = df_merged.drop(columns=columnas_excluir, errors="ignore").drop_duplicates()
 
-            # Verificar que ninguna columna NOT NULL quede como nula
-            nulas_invalidas = df_insertar[columnas_notnull].isnull().any(axis=1)
-            if nulas_invalidas.any():
-                st.error("❌ No se pueden insertar registros con valores nulos en columnas obligatorias:")
-                st.dataframe(df_insertar[nulas_invalidas], use_container_width=True)
-                st.stop()
+            # Validar columnas NOT NULL sin default ni autoincremento
+            columnas_notnull = []
+            for col, meta in columnas_schema_dict.items():
+                if not meta.get("nullable", True) and col in df_insertar.columns:
+                    if meta.get("default") is None and not meta.get("autoincrement", False):
+                        columnas_notnull.append(col)
+
+            if columnas_notnull:
+                registros_invalidos = df_insertar[columnas_notnull].isnull().any(axis=1)
+                if registros_invalidos.any():
+                    st.error("❌ No se pueden insertar registros con valores nulos en columnas NOT NULL sin default:")
+                    st.dataframe(df_insertar[registros_invalidos], use_container_width=True)
+                    st.stop()
+
+            # Verificar conflictos UNIQUE
+            columnas_unique = []
+            for col in columnas_schema:
+                nombre_col = col["name"]
+                if nombre_col in df_insertar.columns:
+                    try:
+                        query = f"SELECT {nombre_col} FROM {tabla_destino}"
+                        valores_existentes = pd.read_sql_query(query, engine)[nombre_col].dropna().unique()
+                        if any(df_insertar[nombre_col].isin(valores_existentes)):
+                            columnas_unique.append(nombre_col)
+                    except Exception:
+                        pass
+
+            if columnas_unique:
+                st.warning("⚠️ Se encontraron posibles conflictos con columnas UNIQUE. Se excluirán registros duplicados.")
+                df_insertar = df_insertar.drop_duplicates(subset=columnas_unique)
 
             df_insertar.to_sql(tabla_destino, engine, if_exists="append", index=False)
-
             st.success(f"✅ Se insertaron {len(df_insertar)} registro(s) correctamente en '{tabla_destino}' de {motor_destino.upper()} (PKs generadas automáticamente si aplica)")
         except Exception as error:
             st.error(f"❌ Error al insertar los datos: {error}")
+
+
