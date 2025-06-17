@@ -291,31 +291,37 @@ with tab_carga:
     st.title("⚙️ Carga Directa en Base de Datos")
 
     # Validar si ya se realizó una integración
-    if "df_merged" not in locals():
+    if "df_merged" not in locals() or "tabla_b" not in locals() or "motor_b" not in locals():
         st.info("ℹ️ Primero realiza una integración válida para habilitar esta opción.")
         st.stop()
 
-    # Validar que haya al menos un motor conectado
     if not st.session_state["motores_conectados"]:
         st.warning("⚠️ No hay motores conectados.")
         st.stop()
 
-    # Selección del motor de destino
-    motores = list(st.session_state["motores_conectados"].keys())
-    motor_destino = st.selectbox("🛢 Motor de destino", motores, key="crud_motor")
+    motores = [motor_b] if motor_b in st.session_state["motores_conectados"] else []
+
+    if not motores:
+        st.error("❌ No se encontró el motor de destino utilizado en la integración previa.")
+        st.stop()
+
+    motor_destino = st.selectbox("🛢 Motor de destino (utilizado en integración)", motores, key="crud_motor")
 
     engine = st.session_state["motores_conectados"][motor_destino]
     inspector = inspect(engine)
     tablas_destino = st.session_state["tablas_por_motor"].get(motor_destino, [])
-    tabla_destino = st.selectbox("📥 Tabla destino", tablas_destino, key="crud_tabla")
+
+    if tabla_b not in tablas_destino:
+        st.error(f"❌ La tabla '{tabla_b}' no se encuentra en el motor de destino.")
+        st.stop()
+
+    tabla_destino = st.selectbox("📥 Tabla destino (de la integración)", [tabla_b], key="crud_tabla")
 
     columnas_destino = [col["name"] for col in inspector.get_columns(tabla_destino)]
 
-    # Vista previa de datos a insertar
     st.markdown("### 👁️ Vista previa de datos a insertar")
     st.dataframe(df_merged, use_container_width=True)
 
-    # Validar compatibilidad entre columnas del DataFrame y tabla destino
     st.markdown("### ⚠️ Compatibilidad de columnas")
     columnas_compatibles = set(df_merged.columns).issubset(set(columnas_destino))
 
@@ -323,24 +329,30 @@ with tab_carga:
         st.success("✔ Las columnas del DataFrame son compatibles con la tabla destino.")
     else:
         st.error("❌ Las columnas del DataFrame NO coinciden con las de la tabla destino.")
-        st.write("🧾 Columnas faltantes en la tabla destino:")
-        faltantes = list(set(df_merged.columns) - set(columnas_destino))
-        st.write(faltantes)
+        columnas_faltantes = list(set(df_merged.columns) - set(columnas_destino))
+        st.write("🧾 Columnas faltantes en la tabla destino:", columnas_faltantes)
         st.stop()
 
-    # Botón para insertar datos en la tabla destino
     if st.button("🚀 Insertar en la base de datos (autogenerar PKs)"):
         try:
-            # Detectar y excluir columnas PRIMARY KEY
-            pk_columnas = []
-            for pk in inspector.get_pk_constraint(tabla_destino)["constrained_columns"]:
-                if pk in df_merged.columns:
-                    pk_columnas.append(pk)
+            columnas_pk = inspector.get_pk_constraint(tabla_destino).get("constrained_columns", [])
 
-            df_insertar = df_merged.drop(columns=pk_columnas, errors="ignore")
+            # Excluir columnas PK y columnas NOT NULL sin default
+            columnas_notnull = [col["name"] for col in inspector.get_columns(tabla_destino) if not col.get("nullable", True) and not col.get("default")]
+            columnas_excluir = list(set(columnas_pk).intersection(df_merged.columns))
 
-            # Insertar los datos usando SQLAlchemy
+            df_insertar = df_merged.drop(columns=columnas_excluir, errors="ignore")
+            df_insertar = df_insertar.drop_duplicates()
+
+            # Verificar que ninguna columna NOT NULL quede como nula
+            nulas_invalidas = df_insertar[columnas_notnull].isnull().any(axis=1)
+            if nulas_invalidas.any():
+                st.error("❌ No se pueden insertar registros con valores nulos en columnas obligatorias:")
+                st.dataframe(df_insertar[nulas_invalidas], use_container_width=True)
+                st.stop()
+
             df_insertar.to_sql(tabla_destino, engine, if_exists="append", index=False)
-            st.success(f"✅ Datos insertados correctamente en '{tabla_destino}' de {motor_destino.upper()} (PKs generados automáticamente)")
+
+            st.success(f"✅ Se insertaron {len(df_insertar)} registro(s) correctamente en '{tabla_destino}' de {motor_destino.upper()} (PKs generadas automáticamente si aplica)")
         except Exception as error:
             st.error(f"❌ Error al insertar los datos: {error}")
