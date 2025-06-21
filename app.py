@@ -10,6 +10,18 @@ import graphviz
 from models import Base
 from validators import validar_generico
 import io
+from sync_logic import sync_universal
+
+def get_unique_keys(table_name):
+    if table_name == "clientes":
+        return ["correo"]
+    elif table_name == "productos":
+        return ["nombre", "categoria"]
+    elif table_name == "ventas":
+        return ["fecha", "id_cliente", "total"]
+    elif table_name == "detalle_venta":
+        return ["id_venta", "id_producto"]
+    return []
 
 # ------------------------------
 # Configuración inicial de la página
@@ -300,10 +312,10 @@ with tab_carga:
 
     motores = [motor_b] if motor_b in st.session_state["motores_conectados"] else []
     if not motores:
-        st.error("❌ No se encontró el motor de destino utilizado en la integración previa.")
+        st.error(f"❌ No se encontró el motor de destino utilizado en la integración previa.")
         st.stop()
 
-    motor_destino = st.selectbox("🛢 Motor de destino (utilizado en integración)", motores, key="crud_motor")
+    motor_destino = st.selectbox("📃 Motor de destino (utilizado en integración)", motores, key="crud_motor")
     engine = st.session_state["motores_conectados"][motor_destino]
     inspector = inspect(engine)
     tablas_destino = st.session_state["tablas_por_motor"].get(motor_destino, [])
@@ -312,7 +324,7 @@ with tab_carga:
         st.error(f"❌ La tabla '{tabla_b}' no se encuentra en el motor de destino.")
         st.stop()
 
-    tabla_destino = st.selectbox("📥 Tabla destino (de la integración)", [tabla_b], key="crud_tabla")
+    tabla_destino = st.selectbox("📅 Tabla destino (de la integración)", [tabla_b], key="crud_tabla")
     columnas_destino = [col["name"] for col in inspector.get_columns(tabla_destino)]
 
     st.markdown("### 👁️ Vista previa de datos a insertar")
@@ -325,16 +337,20 @@ with tab_carga:
     else:
         st.error("❌ Las columnas del DataFrame NO coinciden con las de la tabla destino.")
         columnas_faltantes = list(set(df_merged.columns) - set(columnas_destino))
-        st.write("🧾 Columnas faltantes en la tabla destino:", columnas_faltantes)
+        st.write("📜 Columnas faltantes en la tabla destino:", columnas_faltantes)
         st.stop()
 
     if st.button("🚀 Insertar en la base de datos (autogenerar PKs)"):
         try:
+            motores_conectados = [
+                engine_ for nombre, engine_ in st.session_state["motores_conectados"].items()
+                if engine_ != engine
+            ]
+
             columnas_schema = inspector.get_columns(tabla_destino)
             columnas_schema_dict = {col["name"]: col for col in columnas_schema}
             columnas_pk = inspector.get_pk_constraint(tabla_destino).get("constrained_columns", [])
 
-            # Excluir columnas con 'id' en el nombre o claves primarias explícitas
             columnas_excluir = []
             for col in df_merged.columns:
                 if col in columnas_pk or "id_" in col.lower():
@@ -342,7 +358,6 @@ with tab_carga:
 
             df_insertar = df_merged.drop(columns=columnas_excluir, errors="ignore").drop_duplicates()
 
-            # Validar columnas NOT NULL sin default ni autoincremento
             columnas_notnull = []
             for col, meta in columnas_schema_dict.items():
                 if not meta.get("nullable", True) and col in df_insertar.columns:
@@ -356,7 +371,6 @@ with tab_carga:
                     st.dataframe(df_insertar[registros_invalidos], use_container_width=True)
                     st.stop()
 
-            # Verificar conflictos UNIQUE
             columnas_unique = []
             for col in columnas_schema:
                 nombre_col = col["name"]
@@ -373,9 +387,20 @@ with tab_carga:
                 st.warning("⚠️ Se encontraron posibles conflictos con columnas UNIQUE. Se excluirán registros duplicados.")
                 df_insertar = df_insertar.drop_duplicates(subset=columnas_unique)
 
+            # ✅ Insertar en el destino
             df_insertar.to_sql(tabla_destino, engine, if_exists="append", index=False)
             st.success(f"✅ Se insertaron {len(df_insertar)} registro(s) correctamente en '{tabla_destino}' de {motor_destino.upper()} (PKs generadas automáticamente si aplica)")
+
+            # ✅ Sincronizar en otros motores
+            for _, fila in df_insertar.iterrows():
+                sync_universal(
+                    action="insert",
+                    table_name=tabla_destino,
+                    record_dict=fila.to_dict(),
+                    db_origen=engine,
+                    db_destinos=motores_conectados,
+                    unique_keys=get_unique_keys(tabla_destino)
+                )
+
         except Exception as error:
             st.error(f"❌ Error al insertar los datos: {error}")
-
-
