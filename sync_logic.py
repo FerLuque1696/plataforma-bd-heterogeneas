@@ -3,26 +3,25 @@ from sqlalchemy.exc import SQLAlchemyError
 
 def sync_universal(action, table_name, record_dict, db_origen, db_destinos, unique_keys):
     """
-    Sincroniza un registro en todas las BD destino.
+    Sincroniza un registro entre múltiples motores de base de datos.
     
-    action: "insert", "update", "delete"
-    table_name: str
-    record_dict: dict con los campos y valores
-    db_origen: engine origen (no se vuelve a escribir aquí)
-    db_destinos: lista de engines SQLAlchemy
-    unique_keys: lista de campos clave para identificar duplicados
+    action: 'insert', 'update', o 'delete'
+    table_name: nombre de la tabla (str)
+    record_dict: diccionario con los datos
+    db_origen: motor origen (SQLAlchemy Engine)
+    db_destinos: lista de motores destino
+    unique_keys: claves lógicas para identificar registros únicos
     """
     for engine in db_destinos:
         if engine == db_origen:
-            continue  # evitar duplicar en la BD de origen
+            continue
 
         try:
             metadata = MetaData()
             metadata.reflect(bind=engine)
             table = metadata.tables[table_name]
 
-            # construir filtro de comparación (por campos únicos)
-            filtro = and_(*[table.c[k] == record_dict[k] for k in unique_keys])
+            filtro = and_(*[table.c[k] == record_dict[k] for k in unique_keys if k in record_dict])
 
             with engine.connect() as conn:
                 existing = conn.execute(select(table).where(filtro)).fetchone()
@@ -44,3 +43,5 @@ def sync_universal(action, table_name, record_dict, db_origen, db_destinos, uniq
 
         except SQLAlchemyError as e:
             print(f"[ERROR] Sync {action.upper()} on {table_name} in {engine.url}: {e}")
+        except KeyError as e:
+            print(f"[ERROR] Clave faltante en record_dict para {table_name}: {e}")

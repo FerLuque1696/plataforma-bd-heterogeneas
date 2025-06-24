@@ -315,7 +315,7 @@ with tab_carga:
         st.error(f"❌ No se encontró el motor de destino utilizado en la integración previa.")
         st.stop()
 
-    motor_destino = st.selectbox("📃 Motor de destino (utilizado en integración)", motores, key="crud_motor")
+    motor_destino = st.selectbox("🛢 Motor de destino (utilizado en integración)", motores, key="crud_motor")
     engine = st.session_state["motores_conectados"][motor_destino]
     inspector = inspect(engine)
     tablas_destino = st.session_state["tablas_por_motor"].get(motor_destino, [])
@@ -324,7 +324,7 @@ with tab_carga:
         st.error(f"❌ La tabla '{tabla_b}' no se encuentra en el motor de destino.")
         st.stop()
 
-    tabla_destino = st.selectbox("📅 Tabla destino (de la integración)", [tabla_b], key="crud_tabla")
+    tabla_destino = st.selectbox("📥 Tabla destino (de la integración)", [tabla_b], key="crud_tabla")
     columnas_destino = [col["name"] for col in inspector.get_columns(tabla_destino)]
 
     st.markdown("### 👁️ Vista previa de datos a insertar")
@@ -337,7 +337,7 @@ with tab_carga:
     else:
         st.error("❌ Las columnas del DataFrame NO coinciden con las de la tabla destino.")
         columnas_faltantes = list(set(df_merged.columns) - set(columnas_destino))
-        st.write("📜 Columnas faltantes en la tabla destino:", columnas_faltantes)
+        st.write("🧾 Columnas faltantes en la tabla destino:", columnas_faltantes)
         st.stop()
 
     if st.button("🚀 Insertar en la base de datos (autogenerar PKs)"):
@@ -387,11 +387,9 @@ with tab_carga:
                 st.warning("⚠️ Se encontraron posibles conflictos con columnas UNIQUE. Se excluirán registros duplicados.")
                 df_insertar = df_insertar.drop_duplicates(subset=columnas_unique)
 
-            # ✅ Insertar en el destino
             df_insertar.to_sql(tabla_destino, engine, if_exists="append", index=False)
             st.success(f"✅ Se insertaron {len(df_insertar)} registro(s) correctamente en '{tabla_destino}' de {motor_destino.upper()} (PKs generadas automáticamente si aplica)")
 
-            # ✅ Sincronizar en otros motores
             for _, fila in df_insertar.iterrows():
                 sync_universal(
                     action="insert",
@@ -404,3 +402,44 @@ with tab_carga:
 
         except Exception as error:
             st.error(f"❌ Error al insertar los datos: {error}")
+
+    # --- Sección de actualización o eliminación ---
+    st.markdown("### ✏️ Modificar o eliminar registros integrados")
+
+    df_merged_reset = df_merged.reset_index(drop=True)
+    selected_indices = st.multiselect("Selecciona las filas para actualizar o eliminar", df_merged_reset.index)
+
+    if selected_indices:
+        selected_rows = df_merged_reset.loc[selected_indices]
+        st.write("📋 Registros seleccionados:")
+        st.dataframe(selected_rows)
+
+        st.markdown("#### 📝 Editar valores antes de actualizar")
+        updates = {}
+        for col in df_insertar.columns:
+            updates[col] = st.text_input(f"{col} (nuevo valor)", value=str(selected_rows.iloc[0][col]))
+
+        if st.button("🔁 Actualizar registros seleccionados"):
+            for _, row in selected_rows.iterrows():
+                actualizacion = {k: updates[k] for k in updates}
+                sync_universal(
+                    action="update",
+                    table_name=tabla_destino,
+                    record_dict=actualizacion,
+                    db_origen=engine,
+                    db_destinos=motores_conectados,
+                    unique_keys=get_unique_keys(tabla_destino)
+                )
+            st.success("✅ Registros actualizados y sincronizados.")
+
+        if st.button("🗑️ Eliminar registros seleccionados"):
+            for _, row in selected_rows.iterrows():
+                sync_universal(
+                    action="delete",
+                    table_name=tabla_destino,
+                    record_dict=row.to_dict(),
+                    db_origen=engine,
+                    db_destinos=motores_conectados,
+                    unique_keys=get_unique_keys(tabla_destino)
+                )
+            st.success("✅ Registros eliminados de todas las bases de datos.")
