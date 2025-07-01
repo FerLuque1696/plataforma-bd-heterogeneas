@@ -1,19 +1,19 @@
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy import create_engine
 from models import Usuario
+from config import construir_url
 import csv
 
 # -----------------------------------------
 # FUNCIÓN: obtener_usuarios
 # -----------------------------------------
-
-def obtener_usuarios(db_key, db_url):
+def obtener_usuarios(db_key):
     """
-    Obtiene usuarios desde la base de datos especificada usando la URL.
+    Obtiene usuarios desde la base de datos especificada usando su clave.
     Devuelve una lista de diccionarios con los datos obtenidos.
     """
     print(f"🔍 Consultando usuarios en: {db_key}")
-    engine = create_engine(db_url)
+    engine = create_engine(construir_url(db_key))
     Session = sessionmaker(bind=engine)
     session = Session()
 
@@ -39,7 +39,6 @@ def obtener_usuarios(db_key, db_url):
 # -----------------------------------------
 # FUNCIÓN: exportar_csv_unificado
 # -----------------------------------------
-
 def exportar_csv_unificado(usuarios_unificados, origen="unificados"):
     """
     Exporta una lista de usuarios (diccionarios) a un archivo CSV.

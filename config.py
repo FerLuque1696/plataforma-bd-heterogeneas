@@ -13,15 +13,8 @@ from validators import validar_datos
 usuarios_unificados = []
 
 # ------------------------------
-# Interfaz - Sidebar con autocompletado
+# Valores por defecto por motor
 # ------------------------------
-st.sidebar.title("⚙️ Configuración de Conexión")
-
-tipo_bd = st.sidebar.selectbox("Tipo de Base de Datos", [
-    "sqlite", "postgres", "mysql", "sqlserver"
-])
-
-# Valores por defecto según motor
 defaults = {
     "sqlite":   {"host": "localhost", "puerto": "",     "usuario": "",        "clave": "",      "nombre_bd": "BDtestTipoSQLite.db"},
     "postgres": {"host": "localhost", "puerto": "5432",  "usuario": "postgres","clave": "123456","nombre_bd": "northwind"},
@@ -29,7 +22,28 @@ defaults = {
     "sqlserver":{"host": "DESKTOP-9EK5NEP","puerto": "", "usuario": "",        "clave": "",      "nombre_bd": "AdventureWorks2022"}
 }
 
-# Cargar valores por defecto del motor seleccionado
+# ------------------------------
+# Función para construir URL por clave
+# ------------------------------
+def construir_url(tipo):
+    d = defaults[tipo]
+    if tipo == "sqlite":
+        return f"sqlite:///{d['nombre_bd']}"
+    elif tipo == "sqlserver":
+        return f"mssql+pyodbc://@{d['host']}/{d['nombre_bd']}?driver=ODBC+Driver+17+for+SQL+Server&trusted_connection=yes"
+    elif tipo == "postgres":
+        return f"postgresql+psycopg2://{d['usuario']}:{d['clave']}@{d['host']}:{d['puerto']}/{d['nombre_bd']}"
+    elif tipo == "mysql":
+        return f"mysql+pymysql://{d['usuario']}:{d['clave']}@{d['host']}:{d['puerto']}/{d['nombre_bd']}"
+    else:
+        raise ValueError("Motor no soportado")
+
+# ------------------------------
+# Interfaz - Sidebar con autocompletado
+# ------------------------------
+st.sidebar.title("⚙️ Configuración de Conexión")
+
+tipo_bd = st.sidebar.selectbox("Tipo de Base de Datos", list(defaults.keys()))
 d = defaults[tipo_bd]
 
 host = st.sidebar.text_input("Host", value=d["host"])
@@ -45,18 +59,7 @@ def conectar_y_leer():
     global usuarios_unificados
 
     try:
-        if tipo_bd == "sqlite":
-            url = f"sqlite:///{nombre_bd}"
-        elif tipo_bd == "sqlserver":
-            url = f"mssql+pyodbc://@{host}/{nombre_bd}?driver=ODBC+Driver+17+for+SQL+Server&trusted_connection=yes"
-        elif tipo_bd == "postgres":
-            url = f"postgresql+psycopg2://{usuario}:{clave}@{host}:{puerto}/{nombre_bd}"
-        elif tipo_bd == "mysql":
-            url = f"mysql+pymysql://{usuario}:{clave}@{host}:{puerto}/{nombre_bd}"
-        else:
-            st.error("Motor no soportado.")
-            return
-
+        url = construir_url(tipo_bd)
         engine = create_engine(url)
         Base.metadata.create_all(engine)
         Session = sessionmaker(bind=engine)
