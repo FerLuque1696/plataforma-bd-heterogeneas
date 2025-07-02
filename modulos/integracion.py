@@ -3,7 +3,6 @@ import pandas as pd
 import graphviz
 from sqlalchemy import inspect
 
-
 def mostrar_integracion():
     st.title("🔄 Integración Inteligente de Tablas")
 
@@ -97,14 +96,23 @@ def mostrar_integracion():
             df_merge = pd.concat([df_a[mapeo.keys()], df_renamed_b[mapeo.keys()]], ignore_index=True)
             st.dataframe(df_merge.head(100))
 
+            # Guardar en sesión
             st.session_state["tabla_integrada"] = df_merge
-            st.session_state["columnas_mapeadas"] = mapeo
+            st.session_state["columnas_mapeadas"] = list(mapeo.keys())
             st.session_state["origenes_integracion"] = {
-                "motor_a": motor_a,
-                "tabla_a": tabla_a,
-                "motor_b": motor_b,
-                "tabla_b": tabla_b
+                "motor_a": motor_a, "tabla_a": tabla_a,
+                "motor_b": motor_b, "tabla_b": tabla_b
             }
+
+            # Para sincronización futura
+            if st.button("🧭 Enviar a sincronización"):
+                st.session_state["sync_preparado"] = True
+                st.session_state["tablas_para_sincronizar"] = {
+                    "motor_a": motor_a, "tabla_a": tabla_a,
+                    "motor_b": motor_b, "tabla_b": tabla_b
+                }
+                st.success("✅ Listo para sincronizar. Ve a la pestaña correspondiente.")
+
         except Exception as e:
             st.error(f"Error al integrar: {e}")
     else:
@@ -120,3 +128,4 @@ def obtener_columnas(motor, tabla):
     inspector = inspect(engine)
     columnas = inspector.get_columns(tabla)
     return [col["name"] for col in columnas]
+
