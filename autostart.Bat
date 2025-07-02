@@ -22,6 +22,6 @@ pip install -r requirements.txt
 
 REM 4. Ejecutar la aplicación
 echo Ejecutando la plataforma...
-streamlit run app.py
+streamlit run DBH_plataform.py
 
 pause
