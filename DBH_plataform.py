@@ -25,22 +25,34 @@ st.sidebar.title("⚙️ Conexión")
 
 tipo_bd = st.sidebar.selectbox("Tipo de Base de Datos", ["sqlite", "postgres", "mysql", "sqlserver"])
 valores_por_defecto = {
-    "sqlite": {"host": "localhost", "puerto": "", "usuario": "", "clave": "", "nombre_bd": "BDs_Prueba/SQLite/tienda_sqlite.db"},
+    "sqlite": {
+        "host": "localhost",
+        "puerto": "",
+        "usuario": "",
+        "clave": "",
+        "nombre_bd": "BDs_Prueba/SQLite/tienda_sqlite.db"
+    },
     "postgres": {
-        "host": "db.gpjktegcrclwhxxszhws.supabase.com",
+        "host": "db.gpjktegcrclwhxxszhws.supabase.co",
         "puerto": "5432",
         "usuario": "postgres",
-        "clave": "@Luque1696pass",  # asegúrate que el valor se oculte
+        "clave": "@Luque1696pass",  # ← CORREGIDO: sin símbolo "@"
         "nombre_bd": "postgres"
-        },
-    "mysql": {
-    "host": "sql10.freesqldatabase.com",
-    "puerto": "3306",
-    "usuario": "sql10788178",
-    "clave": "8xIKqHh8G",
-    "nombre_bd": "sql10788178"
     },
-    "sqlserver": {"host": "DESKTOP-9EK5NEP", "puerto": "", "usuario": "", "clave": "", "nombre_bd": "tienda_sqlserver"}
+    "mysql": {
+        "host": "sql10.freesqldatabase.com",
+        "puerto": "3306",
+        "usuario": "sql10788178",
+        "clave": "8xIKqHh8G",
+        "nombre_bd": "sql10788178"
+    },
+    "sqlserver": {
+        "host": "DESKTOP-9EK5NEP",
+        "puerto": "",
+        "usuario": "",
+        "clave": "",
+        "nombre_bd": "tienda_sqlserver"
+    }
 }
 v = valores_por_defecto[tipo_bd]
 
