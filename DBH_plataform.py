@@ -40,11 +40,11 @@ valores_por_defecto = {
         "nombre_bd": "postgres"
     },
     "mysql": {
-        "host": "sql10.freesqldatabase.com",
-        "puerto": "3306",
-        "usuario": "sql10788178",
-        "clave": "8xIKqHh8G",
-        "nombre_bd": "sql10788178"
+    "host": "maglev.proxy.rlwy.net",
+    "puerto": "24117",
+    "usuario": "root",
+    "clave": "UIgyVOyxdRLrEPwdZRKPRwTWhzrTyGmh",
+    "nombre_bd": "railway"
     },
     "sqlserver": {
         "host": "DESKTOP-9EK5NEP",
@@ -62,16 +62,23 @@ usuario = st.sidebar.text_input("Usuario", value=v["usuario"])
 clave = st.sidebar.text_input("Contraseña", type="password", value=v["clave"])
 nombre_bd = st.sidebar.text_input("Nombre de la BD / Ruta SQLite", value=v["nombre_bd"])
 
+from urllib.parse import quote_plus  # Agrega esta importación al inicio
+
 def construir_url(tipo, user, pwd, host, port, db):
     if tipo == "sqlite":
         return f"sqlite:///{db}"
     if tipo == "sqlserver":
         return f"mssql+pyodbc://@{host}/{db}?driver=ODBC+Driver+17+for+SQL+Server&trusted_connection=yes"
     if tipo == "postgres":
-        return f"postgresql+psycopg2://{user}:{pwd}@{host}:{port}/{db}"
+        user_encoded = quote_plus(user)
+        pwd_encoded = quote_plus(pwd)
+        return f"postgresql+psycopg2://{user_encoded}:{pwd_encoded}@{host}:{port}/{db}"
     if tipo == "mysql":
-        return f"mysql+pymysql://{user}:{pwd}@{host}:{port}/{db}"
+        user_encoded = quote_plus(user)
+        pwd_encoded = quote_plus(pwd)
+        return f"mysql+pymysql://{user_encoded}:{pwd_encoded}@{host}:{port}/{db}"
     return None
+
 
 if st.sidebar.button("🔌 Conectar"):
     try:
@@ -101,3 +108,4 @@ with tab3:
         st.session_state.get("motores_conectados"),
         st.session_state.get("columnas_mapeadas")
     )
+
