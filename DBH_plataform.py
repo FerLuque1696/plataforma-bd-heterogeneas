@@ -2,6 +2,7 @@ import streamlit as st
 import pandas as pd
 import graphviz
 from sqlalchemy import inspect, create_engine
+from urllib.parse import quote_plus
 
 from modulos import exploracion, integracion, sincronizacion  # Eliminamos carga
 
