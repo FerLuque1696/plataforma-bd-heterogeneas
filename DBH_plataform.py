@@ -27,7 +27,7 @@ tipo_bd = st.sidebar.selectbox("Tipo de Base de Datos", ["sqlite", "postgres", "
 valores_por_defecto = {
     "sqlite": {"host": "localhost", "puerto": "", "usuario": "", "clave": "", "nombre_bd": "BDs_Prueba/SQLite/tienda_sqlite.db"},
     "postgres": {
-        "host": "db.gpjktegcrclwhxxszhws.supabase.co",
+        "host": "db.gpjktegcrclwhxxszhws.supabase.com",
         "puerto": "5432",
         "usuario": "postgres",
         "clave": "@Luque1696pass",  # asegúrate que el valor se oculte
