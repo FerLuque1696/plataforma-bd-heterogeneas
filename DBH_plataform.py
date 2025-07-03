@@ -26,8 +26,20 @@ st.sidebar.title("⚙️ Conexión")
 tipo_bd = st.sidebar.selectbox("Tipo de Base de Datos", ["sqlite", "postgres", "mysql", "sqlserver"])
 valores_por_defecto = {
     "sqlite": {"host": "localhost", "puerto": "", "usuario": "", "clave": "", "nombre_bd": "BDs_Prueba/SQLite/tienda_sqlite.db"},
-    "postgres": {"host": "localhost", "puerto": "5432", "usuario": "postgres", "clave": "123456", "nombre_bd": "tienda_postgres"},
-    "mysql": {"host": "localhost", "puerto": "3306", "usuario": "root", "clave": "123456", "nombre_bd": "tienda_mysql"},
+    "postgres": {
+        "host": "db.gpjktegcrclwhxxszhws.supabase.co",
+        "puerto": "5432",
+        "usuario": "postgres",
+        "clave": "@Luque1696pass",  # asegúrate que el valor se oculte
+        "nombre_bd": "postgres"
+        },
+    "mysql": {
+    "host": "sql10.freesqldatabase.com",
+    "puerto": "3306",
+    "usuario": "sql10788178",
+    "clave": "8xIKqHh8G",
+    "nombre_bd": "sql10788178"
+    },
     "sqlserver": {"host": "DESKTOP-9EK5NEP", "puerto": "", "usuario": "", "clave": "", "nombre_bd": "tienda_sqlserver"}
 }
 v = valores_por_defecto[tipo_bd]
