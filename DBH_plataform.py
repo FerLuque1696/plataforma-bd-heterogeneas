@@ -34,11 +34,11 @@ valores_por_defecto = {
         "nombre_bd": "BDs_Prueba/SQLite/tienda_sqlite.db"
     },
     "postgres": {
-        "host": "db.gpjktegcrclwhxxszhws.supabase.co",
-        "puerto": "5432",
-        "usuario": "postgres",
-        "clave": "@Luque1696pass",  # ← CORREGIDO: sin símbolo "@"
-        "nombre_bd": "postgres"
+    "host": "shinkansen.proxy.rlwy.net",
+    "puerto": "12114",
+    "usuario": "postgres",
+    "clave": "fgCeonsIkhcHcZfHKBACqqyQMWsfJGVH",  # sin @
+    "nombre_bd": "railway"
     },
     "mysql": {
     "host": "maglev.proxy.rlwy.net",
